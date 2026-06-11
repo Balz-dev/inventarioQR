@@ -12,7 +12,7 @@ function Inventario({ showToast }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [sortBy, setSortBy] = useState('nombre'); // nombre, cantidad, fecha
+  const [sortBy, setSortBy] = useState('nombre'); // nombre, cantidad, fecha, caducidad
 
   const allProducts = useLiveQuery(
     () => db.productos.toArray(),
@@ -48,6 +48,11 @@ function Inventario({ showToast }) {
           return (b.cantidad || 0) - (a.cantidad || 0);
         case 'fecha':
           return new Date(b.ultimaActualizacion || 0) - new Date(a.ultimaActualizacion || 0);
+        case 'caducidad':
+          if (!a.caducidad && !b.caducidad) return 0;
+          if (!a.caducidad) return 1;
+          if (!b.caducidad) return -1;
+          return new Date(a.caducidad) - new Date(b.caducidad);
         case 'nombre':
         default:
           return (a.nombre || '').localeCompare(b.nombre || '');
@@ -180,6 +185,13 @@ function Inventario({ showToast }) {
         >
           Recientes
         </button>
+        <button
+          className={`btn btn-sm ${sortBy === 'caducidad' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setSortBy('caducidad')}
+          style={{ fontSize: 'var(--font-size-xs)' }}
+        >
+          Vencimiento
+        </button>
       </div>
 
       {/* Product List */}
@@ -187,8 +199,12 @@ function Inventario({ showToast }) {
         <div className="product-list">
           {filteredProducts.map(product => (
             <div key={product.id} className="product-item" onClick={() => setEditingProduct(product)}>
-              <div className="product-item-emoji">
-                {getCategoryEmoji(product.categoria)}
+              <div className="product-item-emoji" style={product.imagen ? { padding: 0, overflow: 'hidden' } : {}}>
+                {product.imagen ? (
+                  <img src={product.imagen} alt={product.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  getCategoryEmoji(product.categoria)
+                )}
               </div>
               <div className="product-item-info">
                 <div className="product-item-name">{product.nombre}</div>
@@ -200,6 +216,14 @@ function Inventario({ showToast }) {
                   }}>
                     {product.categoria || 'Sin categoría'}
                   </span>
+                  {product.caducidad && (
+                    <span className="product-item-badge" style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      color: '#ef4444',
+                    }}>
+                      Vence: {product.caducidad}
+                    </span>
+                  )}
                   {product.precio && (
                     <span style={{ 
                       fontSize: 'var(--font-size-xs)', 
@@ -285,7 +309,36 @@ function ProductEditModal({ product, categorias, onClose, onSave, onDelete, onUp
     precio: product.precio || '',
     descripcion: product.descripcion || '',
     unidad: product.unidad || 'pieza',
+    caducidad: product.caducidad || '',
+    imagen: product.imagen || null,
   });
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const targetSize = 400;
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+        
+        const size = Math.min(img.width, img.height);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+        
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, targetSize, targetSize);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setForm(prev => ({ ...prev, imagen: base64 }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const getCategoryEmoji = (catName) => {
     const cat = categorias?.find(c => c.nombre === catName);
@@ -299,6 +352,8 @@ function ProductEditModal({ product, categorias, onClose, onSave, onDelete, onUp
       precio: form.precio ? parseFloat(form.precio) : null,
       descripcion: form.descripcion,
       unidad: form.unidad,
+      caducidad: form.caducidad || null,
+      imagen: form.imagen,
     });
   };
 
@@ -368,9 +423,15 @@ function ProductEditModal({ product, categorias, onClose, onSave, onDelete, onUp
             </div>
 
             {/* Details */}
+            {product.imagen && (
+              <div style={{ marginBottom: 'var(--spacing-lg)', display: 'flex', justifyContent: 'center' }}>
+                <img src={product.imagen} alt={product.nombre} style={{ width: '200px', height: '200px', objectFit: 'cover', borderRadius: 'var(--radius-lg)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+              </div>
+            )}
             <div style={{ marginBottom: 'var(--spacing-lg)' }}>
               <DetailRow label="Categoría" value={`${getCategoryEmoji(product.categoria)} ${product.categoria || 'Sin categoría'}`} />
               {product.precio && <DetailRow label="Precio" value={`$${product.precio.toFixed(2)}`} />}
+              {product.caducidad && <DetailRow label="Caducidad" value={product.caducidad} />}
               {product.descripcion && <DetailRow label="Notas" value={product.descripcion} />}
               <DetailRow label="Creado" value={formatDate(product.fechaCreacion)} />
               <DetailRow label="Actualizado" value={formatDate(product.ultimaActualizacion)} />
@@ -457,6 +518,40 @@ function ProductEditModal({ product, categorias, onClose, onSave, onDelete, onUp
                   value={form.descripcion}
                   onChange={(e) => setForm(prev => ({ ...prev, descripcion: e.target.value }))}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="edit-expiration">Fecha de Caducidad</label>
+                <input
+                  id="edit-expiration"
+                  className="form-input"
+                  type="date"
+                  value={form.caducidad}
+                  onChange={(e) => setForm(prev => ({ ...prev, caducidad: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Foto del Producto</label>
+                {form.imagen ? (
+                  <div style={{ position: 'relative', width: '100px', height: '100px', marginBottom: 'var(--spacing-sm)' }}>
+                    <img src={form.imagen} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-md)' }} />
+                    <button 
+                      type="button" 
+                      className="btn btn-icon btn-danger" 
+                      style={{ position: 'absolute', top: -5, right: -5, width: 24, height: 24 }}
+                      onClick={() => setForm(prev => ({ ...prev, imagen: null }))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="form-input"
+                    onChange={handleImageUpload}
+                  />
+                )}
               </div>
               <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
                 <button type="button" className="btn btn-secondary btn-full" onClick={() => setEditMode(false)}>

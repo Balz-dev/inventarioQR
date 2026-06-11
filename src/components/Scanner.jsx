@@ -26,7 +26,36 @@ function Scanner({ showToast, onNavigate }) {
     cantidad: 1,
     descripcion: '',
     unidad: 'pieza',
+    caducidad: '',
+    imagen: null,
   });
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const targetSize = 400;
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+        
+        const size = Math.min(img.width, img.height);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+        
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, targetSize, targetSize);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+        setFormData(prev => ({ ...prev, imagen: base64 }));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const stopScanner = useCallback(async () => {
     if (html5QrCodeRef.current) {
@@ -135,6 +164,8 @@ function Scanner({ showToast, onNavigate }) {
         precio: '',
         cantidad: 1,
         descripcion: '',
+        caducidad: '',
+        imagen: null,
       }));
       setShowForm(true);
     }
@@ -157,6 +188,8 @@ function Scanner({ showToast, onNavigate }) {
         cantidad: formData.cantidad,
         descripcion: formData.descripcion.trim(),
         unidad: formData.unidad,
+        caducidad: formData.caducidad || null,
+        imagen: formData.imagen,
       });
 
       showToast(`${formData.nombre} agregado al inventario`, 'success');
@@ -407,6 +440,42 @@ function Scanner({ showToast, onNavigate }) {
                   value={formData.descripcion}
                   onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" htmlFor="product-expiration">Fecha de Caducidad (opcional)</label>
+                <input
+                  id="product-expiration"
+                  className="form-input"
+                  type="date"
+                  value={formData.caducidad}
+                  onChange={(e) => setFormData(prev => ({ ...prev, caducidad: e.target.value }))}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Foto del Producto (opcional)</label>
+                {formData.imagen ? (
+                  <div style={{ position: 'relative', width: '100px', height: '100px', marginBottom: 'var(--spacing-sm)' }}>
+                    <img src={formData.imagen} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-md)' }} />
+                    <button 
+                      type="button" 
+                      className="btn btn-icon btn-danger" 
+                      style={{ position: 'absolute', top: -5, right: -5, width: 24, height: 24 }}
+                      onClick={() => setFormData(prev => ({ ...prev, imagen: null }))}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="form-input"
+                    onChange={handleImageUpload}
+                  />
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>

@@ -8,6 +8,12 @@ db.version(2).stores({
   categorias: '++id, &nombre',
 });
 
+db.version(3).stores({
+  productos: '++id, nombre, categoria, &codigo, ultimaActualizacion, caducidad',
+  escaneos: '++id, productoId, fecha, tipo',
+  categorias: '++id, &nombre',
+});
+
 // Seed default categories
 db.on('populate', () => {
   db.categorias.bulkAdd([
